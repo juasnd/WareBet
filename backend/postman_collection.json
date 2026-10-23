@@ -1,0 +1,17 @@
+{
+  "info": { "name": "Backend Apuestas Deportivas", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "variable": [{"key":"baseUrl","value":"http://localhost:3000"},{"key":"token","value":""}],
+  "item": [
+    {"name":"Health","request":{"method":"GET","url":"{{baseUrl}}/api/health"}},
+    {"name":"Registro apostador","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"nombre\":\"Usuario Demo\",\"correo\":\"demo@example.com\",\"clave\":\"cambia-esta-clave\"}"},"url":"{{baseUrl}}/api/auth/register"}},
+    {"name":"Login","event":[{"listen":"test","script":{"exec":["pm.collectionVariables.set('token', pm.response.json().token);"]}}],"request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"correo\":\"demo@example.com\",\"clave\":\"cambia-esta-clave\"}"},"url":"{{baseUrl}}/api/auth/login"}},
+    {"name":"Menú dinámico","request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{token}}"}],"url":"{{baseUrl}}/api/menu"}},
+    {"name":"Eventos","request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{token}}"}],"url":"{{baseUrl}}/api/eventos"}},
+    {"name":"Usuarios","request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{token}}"}],"url":"{{baseUrl}}/api/usuarios"}},
+    {"name":"Apuestas","request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{token}}"}],"url":"{{baseUrl}}/api/apuestas"}},
+    {"name":"Crear apuesta","request":{"method":"POST","header":[{"key":"Authorization","value":"Bearer {{token}}"},{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"tipo\":\"SIMPLE\",\"monto\":25,\"selecciones\":[{\"id_evento\":1,\"seleccion\":\"LOCAL\"}]}"},"url":"{{baseUrl}}/api/apuestas"}},
+    {"name":"Detalles de apuesta","request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{token}}"}],"url":"{{baseUrl}}/api/apuestas/1/detalles"}},
+    {"name":"Actualizar cuotas (ADMIN/GESTOR)","request":{"method":"PATCH","header":[{"key":"Authorization","value":"Bearer {{token}}"},{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"cuota_local\":1.8,\"cuota_empate\":3.2,\"cuota_visitante\":4.1}"},"url":"{{baseUrl}}/api/eventos/1"}},
+    {"name":"Reportes (ADMIN/GESTOR)","request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{token}}"}],"url":"{{baseUrl}}/api/reportes"}}
+  ]
+}
