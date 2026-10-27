@@ -1,0 +1,6 @@
+projectKey=WoreBet
+serverUrl=http://localhost:9000
+serverVersion=26.9.0.129388
+dashboardUrl=http://localhost:9000/dashboard?id=WoreBet
+ceTaskId=05a609ec-06c3-447e-9c0f-7eb41e389cb8
+ceTaskUrl=http://localhost:9000/api/ce/task?id=05a609ec-06c3-447e-9c0f-7eb41e389cb8
