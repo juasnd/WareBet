@@ -26,7 +26,12 @@ async function createDraft(userId,{tipo,monto,selecciones=[]}) {
 async function confirm(userId,id){
  const c=await pool.connect(); try{await c.query('BEGIN');
   const a=(await c.query('SELECT * FROM apuestas WHERE id_apuesta=$1 AND id_usuario=$2 FOR UPDATE',[id,userId])).rows[0];
-  if(!a) throw fail('Apuesta no encontrada',404); if(a.estado!=='BORRADOR') throw fail('Solo se confirman apuestas en borrador',409);
+  if(!a) {
+   throw fail('Apuesta no encontrada',404);
+  }
+  if(a.estado!=='BORRADOR') {
+   throw fail('Solo se confirman apuestas en borrador',409);
+  }
   const u=(await c.query('SELECT saldo_virtual FROM usuarios WHERE id_usuario=$1 FOR UPDATE',[userId])).rows[0];
   const amount=Number(a.monto); if(Number(u.saldo_virtual)<amount) throw fail('Saldo virtual insuficiente',409);
   await c.query('UPDATE usuarios SET saldo_virtual=saldo_virtual-$1, actualizado_en=NOW() WHERE id_usuario=$2',[amount,userId]);
@@ -42,21 +47,62 @@ async function mutateDetail(userId,perfil,detailId,data,action){const c=await po
  else {d=(await c.query('SELECT d.*,a.id_usuario,a.tipo,a.estado apuesta_estado FROM detalle_apuestas d JOIN apuestas a USING(id_apuesta) WHERE d.id_detalle=$1 FOR UPDATE OF d,a',[detailId])).rows[0];if(!d||(perfil==='APOSTADOR'&&String(d.id_usuario)!==String(userId)))throw fail('Detalle no encontrado',404);if(d.apuesta_estado!=='BORRADOR')throw fail('Solo se editan detalles de apuestas en borrador',409);if(action==='delete'){const count=Number((await c.query('SELECT count(*) FROM detalle_apuestas WHERE id_apuesta=$1',[d.id_apuesta])).rows[0].count);if(count<=1||(d.tipo==='COMBINADA'&&count<=2))throw fail('La apuesta debe conservar una selección simple o dos combinadas');data.id_apuesta=d.id_apuesta;await c.query('DELETE FROM detalle_apuestas WHERE id_detalle=$1',[detailId]);d=null;}else{const ev=data.id_evento||d.id_evento,sel=data.seleccion||d.seleccion;if(!selections[sel])throw fail('Selección inválida');const e=(await c.query('SELECT * FROM eventos_deportivos WHERE id_evento=$1 FOR SHARE',[ev])).rows[0];if(!e||!['PROGRAMADO','EN_VIVO'].includes(e.estado))throw fail('Evento no disponible');const odd=Number(e[selections[sel]]);d=(await c.query("UPDATE detalle_apuestas SET id_evento=$1,seleccion=$2,cuota_fijada=$3 WHERE id_detalle=$4 RETURNING *",[ev,sel,odd,detailId])).rows[0];}}
  const betId=data.id_apuesta||d?.id_apuesta||((await c.query('SELECT id_apuesta FROM detalle_apuestas WHERE id_detalle=$1',[detailId])).rows[0]?.id_apuesta);if(betId){const calc=(await c.query('SELECT count(*)::int n,coalesce(exp(sum(ln(cuota_fijada))),1) total FROM detalle_apuestas WHERE id_apuesta=$1',[betId])).rows[0];await c.query('UPDATE apuestas SET cuota_total=$1,premio_potencial=monto*$1 WHERE id_apuesta=$2',[calc.total,betId]);}await c.query('COMMIT');return d;
  }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}
+async function setFinalEventResult(client,eventId,event){
+ if(event.estado==='FINALIZADO'&&!event.resultado){
+  if(event.marcador_local==null||event.marcador_visitante==null)throw fail('Faltan marcadores');
+  const result=event.marcador_local>event.marcador_visitante?'LOCAL':event.marcador_local<event.marcador_visitante?'VISITANTE':'EMPATE';
+  await client.query('UPDATE eventos_deportivos SET resultado=$1 WHERE id_evento=$2',[result,eventId]);
+  event.resultado=result;
+ }
+}
+async function settlePendingDetails(client,eventId,event){
+ const details=(await client.query("SELECT d.*,a.id_usuario,a.estado AS apuesta_estado FROM detalle_apuestas d JOIN apuestas a USING(id_apuesta) WHERE d.id_evento=$1 AND a.estado='PENDIENTE' FOR UPDATE OF d,a",[eventId])).rows;
+ for(const detail of details){
+  const state=event.estado==='CANCELADO'?'ANULADA':detail.seleccion===event.resultado?'ACERTADA':'FALLADA';
+  await client.query('UPDATE detalle_apuestas SET estado=$1 WHERE id_detalle=$2 AND estado=\'PENDIENTE\'',[state,detail.id_detalle]);
+ }
+ return details;
+}
+async function settleBetAndCreditUser(client,betId){
+ const bet=(await client.query('SELECT * FROM apuestas WHERE id_apuesta=$1 FOR UPDATE',[betId])).rows[0];
+ const details=(await client.query('SELECT estado FROM detalle_apuestas WHERE id_apuesta=$1',[betId])).rows;
+ if(details.some(detail=>detail.estado==='PENDIENTE'))return;
+ const lost=details.some(detail=>detail.estado==='FALLADA');
+ const allVoided=details.every(detail=>detail.estado==='ANULADA');
+ let payout;
+ if(allVoided){
+  payout=Number(bet.monto);
+ }else if(lost){
+  payout=0;
+ }else{
+  payout=Number(bet.premio_potencial);
+ }
+ const status=lost?'PERDIDA':'GANADA';
+ const changed=await client.query("UPDATE apuestas SET estado=$1,fecha_liquidacion=NOW() WHERE id_apuesta=$2 AND estado='PENDIENTE' RETURNING id_apuesta",[status,betId]);
+ if(changed.rowCount&&payout>0){
+  await client.query('UPDATE usuarios SET saldo_virtual=saldo_virtual+$1,actualizado_en=NOW() WHERE id_usuario=$2',[payout,bet.id_usuario]);
+ }
+}
 async function settleEvent(eventId){
- const c=await pool.connect();try{await c.query('BEGIN');
-  const e=(await c.query('SELECT * FROM eventos_deportivos WHERE id_evento=$1 FOR UPDATE',[eventId])).rows[0];
-  if(!e)throw fail('Evento no encontrado',404);
-  if(e.estado!=='FINALIZADO'&&e.estado!=='CANCELADO')throw fail('El evento debe estar finalizado o cancelado');
-  if(e.estado==='FINALIZADO'&&!e.resultado){if(e.marcador_local==null||e.marcador_visitante==null)throw fail('Faltan marcadores'); const r=e.marcador_local>e.marcador_visitante?'LOCAL':e.marcador_local<e.marcador_visitante?'VISITANTE':'EMPATE'; await c.query('UPDATE eventos_deportivos SET resultado=$1 WHERE id_evento=$2',[r,eventId]);e.resultado=r;}
-  const details=(await c.query("SELECT d.*,a.id_usuario,a.estado AS apuesta_estado FROM detalle_apuestas d JOIN apuestas a USING(id_apuesta) WHERE d.id_evento=$1 AND a.estado='PENDIENTE' FOR UPDATE OF d,a",[eventId])).rows;
-  for(const d of details){const state=e.estado==='CANCELADO'?'ANULADA':d.seleccion===e.resultado?'ACERTADA':'FALLADA';await c.query('UPDATE detalle_apuestas SET estado=$1 WHERE id_detalle=$2 AND estado=\'PENDIENTE\'',[state,d.id_detalle]);}
-  const ids=[...new Set(details.map(d=>d.id_apuesta))];
-  for(const id of ids){const a=(await c.query('SELECT * FROM apuestas WHERE id_apuesta=$1 FOR UPDATE',[id])).rows[0];const ds=(await c.query('SELECT estado FROM detalle_apuestas WHERE id_apuesta=$1',[id])).rows;
-   if(ds.some(d=>d.estado==='PENDIENTE'))continue;
-   const lost=ds.some(d=>d.estado==='FALLADA');const payout=ds.every(d=>d.estado==='ANULADA')?Number(a.monto):lost?0:Number(a.premio_potencial);
-   const status=lost?'PERDIDA':'GANADA'; const changed=await c.query("UPDATE apuestas SET estado=$1,fecha_liquidacion=NOW() WHERE id_apuesta=$2 AND estado='PENDIENTE' RETURNING id_apuesta",[status,id]);
-   if(changed.rowCount&&payout>0)await c.query('UPDATE usuarios SET saldo_virtual=saldo_virtual+$1,actualizado_en=NOW() WHERE id_usuario=$2',[payout,a.id_usuario]);
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const event=(await client.query('SELECT * FROM eventos_deportivos WHERE id_evento=$1 FOR UPDATE',[eventId])).rows[0];
+  if(!event)throw fail('Evento no encontrado',404);
+  if(event.estado!=='FINALIZADO'&&event.estado!=='CANCELADO')throw fail('El evento debe estar finalizado o cancelado');
+  await setFinalEventResult(client,eventId,event);
+  const details=await settlePendingDetails(client,eventId,event);
+  const betIds=[...new Set(details.map(detail=>detail.id_apuesta))];
+  for(const betId of betIds){
+   await settleBetAndCreditUser(client,betId);
   }
-  await c.query('COMMIT');return {procesadas:details.length};
- }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}
+  await client.query('COMMIT');
+  return {procesadas:details.length};
+ }catch(error){
+  await client.query('ROLLBACK');
+  throw error;
+ }finally{
+  client.release();
+ }
+}
 module.exports={createDraft,confirm,updateDraft,deleteDraft,mutateDetail,settleEvent};
