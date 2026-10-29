@@ -24,7 +24,7 @@ function getDetailSettlementState(event, detail) {
 
 async function insertDetalleApuesta(client, { id_apuesta, id_evento, seleccion, cuota_fijada }) {
   await client.query(
-    "INSERT INTO detalle_apuestas(id_apuesta,id_evento,seleccion,cuota_fijada,estado) VALUES($1,$2,$3,$4,'PENDIENTE')",
+    'INSERT INTO detalle_apuestas(id_apuesta,id_evento,seleccion,cuota_fijada,estado) VALUES($1,$2,$3,$4,\'PENDIENTE\')',
     [id_apuesta, id_evento, seleccion, cuota_fijada]
   );
 }
@@ -75,7 +75,7 @@ async function createDraft(userId,{tipo,monto,selecciones=[]}) {
   if(!['SIMPLE','COMBINADA'].includes(tipo)||!Number.isFinite(+monto)||+monto<=0) {
     throw fail('Tipo o monto inválido');
   }
-  if((tipo==='SIMPLE'&&selecciones.length!==1)||(tipo==='COMBINADA'&&selecciones.length<2)) {
+  if(!Array.isArray(selecciones)||(tipo==='SIMPLE'&&selecciones.length!==1)||(tipo==='COMBINADA'&&selecciones.length<2)) {
     throw fail('Cantidad de selecciones inválida');
   }
   const client=await pool.connect();
@@ -204,63 +204,76 @@ async function mutateDetail(userId,perfil,detailId,data,action){
   const c=await pool.connect();
   try{
     await c.query('BEGIN');
-    let d;
-    if(action==='create'){
-      const a=(await c.query('SELECT * FROM apuestas WHERE id_apuesta=$1 FOR UPDATE',[data.id_apuesta])).rows[0];
-      if(!a || a.estado!=='BORRADOR' || (perfil==='APOSTADOR' && String(a.id_usuario)!==String(userId))) {
-        throw fail('Apuesta en borrador no encontrada',404);
-      }
-      const e=(await c.query('SELECT * FROM eventos_deportivos WHERE id_evento=$1 FOR SHARE',[data.id_evento])).rows[0];
-      if(!e || !['PROGRAMADO','EN_VIVO'].includes(e.estado) || !selections[data.seleccion]) {
-        throw fail('Evento o selección inválidos');
-      }
-      const odd=Number(e[selections[data.seleccion]]);
-      d=(await insertDetalleApuesta(c, { id_apuesta: a.id_apuesta, id_evento: e.id_evento, seleccion: data.seleccion, cuota_fijada: odd }), 
-         await c.query('SELECT * FROM detalle_apuestas WHERE id_apuesta=$1 AND id_evento=$2 AND seleccion=$3 ORDER BY id_detalle DESC LIMIT 1',[a.id_apuesta, e.id_evento, data.seleccion])).rows[0];
-      if(!d){
-        d=(await c.query('SELECT * FROM detalle_apuestas WHERE id_apuesta=$1 ORDER BY id_detalle DESC LIMIT 1',[a.id_apuesta])).rows[0];
-      }
-    }else{
-      d=(await c.query('SELECT d.*,a.id_usuario,a.tipo,a.estado apuesta_estado FROM detalle_apuestas d JOIN apuestas a USING(id_apuesta) WHERE d.id_detalle=$1 FOR UPDATE OF d,a',[detailId])).rows[0];
-      if(!d || (perfil==='APOSTADOR' && String(d.id_usuario)!==String(userId))) {
-        throw fail('Detalle no encontrado',404);
-      }
-      if(d.apuesta_estado!=='BORRADOR') {
-        throw fail('Solo se editan detalles de apuestas en borrador',409);
-      }
-      if(action==='delete'){
-        const countResult = (await c.query('SELECT count(*) FROM detalle_apuestas WHERE id_apuesta=$1',[d.id_apuesta])).rows[0];
-        const count = Number(countResult.count);
-        if(count <= 1 || (d.tipo === 'COMBINADA' && count <= 2)) {
-          throw fail('La apuesta debe conservar una selección simple o dos combinadas');
-        }
-        data.id_apuesta = d.id_apuesta;
-        await c.query('DELETE FROM detalle_apuestas WHERE id_detalle=$1',[detailId]);
-        d = null;
-      }else{
-        const ev = data.id_evento || d.id_evento;
-        const sel = data.seleccion || d.seleccion;
-        if(!selections[sel]) {
-          throw fail('Selección inválida');
-        }
-        const e=(await c.query('SELECT * FROM eventos_deportivos WHERE id_evento=$1 FOR SHARE',[ev])).rows[0];
-        if(!e || !['PROGRAMADO','EN_VIVO'].includes(e.estado)) {
-          throw fail('Evento no disponible');
-        }
-        const odd=Number(e[selections[sel]]);
-        d=(await c.query('UPDATE detalle_apuestas SET id_evento=$1,seleccion=$2,cuota_fijada=$3 WHERE id_detalle=$4 RETURNING *',[ev, sel, odd, detailId])).rows[0];
-      }
-    }
-    const betId = data.id_apuesta || d?.id_apuesta || ((await c.query('SELECT id_apuesta FROM detalle_apuestas WHERE id_detalle=$1',[detailId])).rows[0]?.id_apuesta);
-    await syncBetTotalsFromDetalles(c, betId);
+    const result = action==='create'
+      ? await createDetail(c,userId,perfil,data)
+      : await changeDetail(c,userId,perfil,detailId,data,action);
+    await syncBetTotalsFromDetalles(c,result.betId);
     await c.query('COMMIT');
-    return d;
+    return result.detail;
   }catch(e){
     await c.query('ROLLBACK');
     throw e;
   }finally{
     c.release();
   }
+}
+
+async function createDetail(client,userId,perfil,data){
+  const bet=(await client.query('SELECT * FROM apuestas WHERE id_apuesta=$1 FOR UPDATE',[data.id_apuesta])).rows[0];
+  if(bet?.estado!=='BORRADOR' || (perfil==='APOSTADOR' && String(bet.id_usuario)!==String(userId))) {
+    throw fail('Apuesta en borrador no encontrada',404);
+  }
+  const event=(await client.query('SELECT * FROM eventos_deportivos WHERE id_evento=$1 FOR SHARE',[data.id_evento])).rows[0];
+  if(!event || !['PROGRAMADO','EN_VIVO'].includes(event.estado) || !selections[data.seleccion]) {
+    throw fail('Evento o selección inválidos');
+  }
+  const odd=Number(event[selections[data.seleccion]]);
+  await insertDetalleApuesta(client,{id_apuesta:bet.id_apuesta,id_evento:event.id_evento,seleccion:data.seleccion,cuota_fijada:odd});
+  let detail=(await client.query('SELECT * FROM detalle_apuestas WHERE id_apuesta=$1 AND id_evento=$2 AND seleccion=$3 ORDER BY id_detalle DESC LIMIT 1',[bet.id_apuesta,event.id_evento,data.seleccion])).rows[0];
+  if(!detail){
+    detail=(await client.query('SELECT * FROM detalle_apuestas WHERE id_apuesta=$1 ORDER BY id_detalle DESC LIMIT 1',[bet.id_apuesta])).rows[0];
+  }
+  return {detail,betId:bet.id_apuesta};
+}
+
+async function changeDetail(client,userId,perfil,detailId,data,action){
+  const detail=(await client.query('SELECT d.*,a.id_usuario,a.tipo,a.estado apuesta_estado FROM detalle_apuestas d JOIN apuestas a USING(id_apuesta) WHERE d.id_detalle=$1 FOR UPDATE OF d,a',[detailId])).rows[0];
+  if(!detail || (perfil==='APOSTADOR' && String(detail.id_usuario)!==String(userId))) {
+    throw fail('Detalle no encontrado',404);
+  }
+  if(detail.apuesta_estado!=='BORRADOR') {
+    throw fail('Solo se editan detalles de apuestas en borrador',409);
+  }
+  if(action==='delete'){
+    await deleteDetail(client,detailId,data,detail);
+    return {detail:null,betId:detail.id_apuesta};
+  }
+  const updated=await updateDetail(client,detailId,data,detail);
+  return {detail:updated,betId:detail.id_apuesta};
+}
+
+async function deleteDetail(client,detailId,data,detail){
+  const countResult=(await client.query('SELECT count(*) FROM detalle_apuestas WHERE id_apuesta=$1',[detail.id_apuesta])).rows[0];
+  const count=Number(countResult.count);
+  if(count<=1 || (detail.tipo==='COMBINADA' && count<=2)) {
+    throw fail('La apuesta debe conservar una selección simple o dos combinadas');
+  }
+  data.id_apuesta=detail.id_apuesta;
+  await client.query('DELETE FROM detalle_apuestas WHERE id_detalle=$1',[detailId]);
+}
+
+async function updateDetail(client,detailId,data,detail){
+  const eventId=data.id_evento || detail.id_evento;
+  const selection=data.seleccion || detail.seleccion;
+  if(!selections[selection]) {
+    throw fail('Selección inválida');
+  }
+  const event=(await client.query('SELECT * FROM eventos_deportivos WHERE id_evento=$1 FOR SHARE',[eventId])).rows[0];
+  if(!event || !['PROGRAMADO','EN_VIVO'].includes(event.estado)) {
+    throw fail('Evento no disponible');
+  }
+  const odd=Number(event[selections[selection]]);
+  return (await client.query('UPDATE detalle_apuestas SET id_evento=$1,seleccion=$2,cuota_fijada=$3 WHERE id_detalle=$4 RETURNING *',[eventId,selection,odd,detailId])).rows[0];
 }
 
 async function setFinalEventResult(client,eventId,event){
