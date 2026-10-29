@@ -2,5 +2,5 @@ projectKey=WareBet
 serverUrl=http://localhost:9000
 serverVersion=26.9.0.129388
 dashboardUrl=http://localhost:9000/dashboard?id=WareBet
-ceTaskId=8d61d016-b02f-40ed-ba1b-88b915f2214d
-ceTaskUrl=http://localhost:9000/api/ce/task?id=8d61d016-b02f-40ed-ba1b-88b915f2214d
+ceTaskId=6350da1c-3bf7-4e84-afa4-367cdb088831
+ceTaskUrl=http://localhost:9000/api/ce/task?id=6350da1c-3bf7-4e84-afa4-367cdb088831
