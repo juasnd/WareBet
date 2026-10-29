@@ -7,9 +7,28 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "create-admin": "node scripts/create-admin.js",
-    "test": "node --test tests/unit.test.js",
+    "test": "jest --runInBand --runTestsByPath tests/apuestas.responsable3.test.js --coverage",
+    "test:unit": "node --test tests/unit.test.js",
     "test:eventos": "jest --runInBand --runTestsByPath tests/eventos_deportivos.responsable2.test.js",
-    "lint:eventos": "eslint --config eslint.responsable2.config.cjs src/app.js src/services/bettingService.js tests/eventos_deportivos.responsable2.test.js eslint.responsable2.config.cjs --max-warnings 0"
+    "test:apuestas": "jest --runInBand --runTestsByPath tests/apuestas.responsable3.test.js --coverage",
+    "lint:eventos": "eslint --config eslint.responsable2.config.cjs src/app.js src/services/bettingService.js tests/eventos_deportivos.responsable2.test.js eslint.responsable2.config.cjs --max-warnings 0",
+    "lint:apuestas": "eslint --config eslint.responsable3.config.cjs src/app.js src/services/bettingService.js src/repositories/crudRepository.js src/middlewares/auth.js src/middlewares/errors.js src/utils/sql.js tests/apuestas.responsable3.test.js eslint.responsable3.config.cjs --max-warnings 0",
+    "lint": "eslint --config eslint.responsable3.config.cjs src/app.js src/services/bettingService.js src/repositories/crudRepository.js src/middlewares/auth.js src/middlewares/errors.js src/utils/sql.js tests/apuestas.responsable3.test.js eslint.responsable3.config.cjs --max-warnings 0"
+  },
+  "jest": {
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "tests/unit.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/app.js",
+      "src/services/bettingService.js",
+      "src/repositories/crudRepository.js",
+      "src/middlewares/auth.js",
+      "src/middlewares/errors.js",
+      "src/utils/sql.js",
+      "src/config/permissions.js"
+    ]
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

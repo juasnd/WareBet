@@ -24,7 +24,7 @@ function getDetailSettlementState(event, detail) {
 
 async function insertDetalleApuesta(client, { id_apuesta, id_evento, seleccion, cuota_fijada }) {
   await client.query(
-    "INSERT INTO detalle_apuestas(id_apuesta,id_evento,seleccion,cuota_fijada,estado) VALUES($1,$2,$3,$4,'PENDIENTE')",
+    'INSERT INTO detalle_apuestas(id_apuesta,id_evento,seleccion,cuota_fijada,estado) VALUES($1,$2,$3,$4,\'PENDIENTE\')',
     [id_apuesta, id_evento, seleccion, cuota_fijada]
   );
 }
@@ -75,7 +75,7 @@ async function createDraft(userId,{tipo,monto,selecciones=[]}) {
   if(!['SIMPLE','COMBINADA'].includes(tipo)||!Number.isFinite(+monto)||+monto<=0) {
     throw fail('Tipo o monto inválido');
   }
-  if((tipo==='SIMPLE'&&selecciones.length!==1)||(tipo==='COMBINADA'&&selecciones.length<2)) {
+  if(!Array.isArray(selecciones)||(tipo==='SIMPLE'&&selecciones.length!==1)||(tipo==='COMBINADA'&&selecciones.length<2)) {
     throw fail('Cantidad de selecciones inválida');
   }
   const client=await pool.connect();

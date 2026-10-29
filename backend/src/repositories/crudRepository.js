@@ -1,5 +1,5 @@
 const { query } = require('../config/db');
-const { allowed, tables } = require('../utils/sql');
+const { tables } = require('../utils/sql');
 const idColumns = { usuarios:'id_usuario', eventos:'id_evento', apuestas:'id_apuesta', detalles:'id_detalle' };
 async function list(resource, { limit=100, offset=0 }={}) { return (await query(`SELECT * FROM ${tables[resource]} ORDER BY 1 LIMIT $1 OFFSET $2`, [limit, offset])).rows; }
 async function get(resource,id,client=query) { return (await client(`SELECT * FROM ${tables[resource]} WHERE "${idColumns[resource]}"=$1`,[id])).rows[0]; }
