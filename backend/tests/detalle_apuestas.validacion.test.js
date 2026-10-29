@@ -7,7 +7,7 @@ jest.mock('../src/config/db', () => ({
   inspectSchema: jest.fn()
 }));
  
-// Simular la verificación del token.
+// Simular la verificacion del token.
 jest.mock('jsonwebtoken', () => ({
   ...jest.requireActual('jsonwebtoken'),
   verify: jest.fn()
@@ -41,20 +41,20 @@ beforeEach(() => {
   pool.connect.mockResolvedValue(client);
 });
  
-describe('Detalle apuestas - Validación y verificación', () => {
+describe('Detalle apuestas - Validacion y verificacion', () => {
   beforeEach(() => {
     query.mockReset();
     jwt.verify.mockReset();
   });
  
-  test('GET /api/detalles requiere autenticación', async () => {
+  test('GET /api/detalles requiere autenticacion', async () => {
     const response = await request(app).get('/api/detalles');
     expect(response.statusCode).toBe(401);
     expect(query).not.toHaveBeenCalled();
     expect(jwt.verify).not.toHaveBeenCalled();
   });
  
-  test('GET /api/detalles/:id requiere autenticación', async () => {
+  test('GET /api/detalles/:id requiere autenticacion', async () => {
     const response = await request(app).get('/api/detalles/1');
     expect(response.statusCode).toBe(401);
     expect(query).not.toHaveBeenCalled();
@@ -81,8 +81,7 @@ describe('Detalle apuestas - Validación y verificación', () => {
     expect(query).toHaveBeenCalled();
  
     // La consulta debe filtrar por el usuario autenticado (id 5),
-    // ya sea por parámetro o por la columna id_usuario en el SQL.
-    // Ajusta esta verificación si tu consulta está escrita distinto.
+    // ya sea por parametro o por la columna id_usuario en el SQL.
     const filtraPorUsuario = query.mock.calls.some(
       ([sql, params]) =>
         (Array.isArray(params) && params.includes(5)) ||
@@ -91,7 +90,7 @@ describe('Detalle apuestas - Validación y verificación', () => {
     expect(filtraPorUsuario).toBe(true);
   });
  
-  test('No se puede crear detalle si la apuesta no está en BORRADOR', async () => {
+  test('No se puede crear detalle si la apuesta no esta en BORRADOR', async () => {
     jwt.verify.mockReturnValue({
       id_usuario: 5,
       perfil: 'APOSTADOR'
@@ -120,7 +119,7 @@ describe('Detalle apuestas - Validación y verificación', () => {
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
   });
  
-  test('No se puede crear detalle si el evento no está PROGRAMADO o EN_VIVO', async () => {
+  test('No se puede crear detalle si el evento no esta PROGRAMADO o EN_VIVO', async () => {
     jwt.verify.mockReturnValue({
       id_usuario: 5,
       perfil: 'APOSTADOR'
@@ -148,11 +147,11 @@ describe('Detalle apuestas - Validación y verificación', () => {
       });
  
     expect(response.statusCode).toBe(400);
-    expect(response.body.error).toMatch(/inválidos/i);
+    expect(response.body.error).toMatch(/invalidos/i);
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
   });
  
-  test('No permite selección inválida', async () => {
+  test('No permite seleccion invalida', async () => {
     jwt.verify.mockReturnValue({
       id_usuario: 5,
       perfil: 'APOSTADOR'
@@ -180,7 +179,7 @@ describe('Detalle apuestas - Validación y verificación', () => {
       });
  
     expect(response.statusCode).toBe(400);
-    expect(response.body.error).toMatch(/inválidos/i);
+    expect(response.body.error).toMatch(/invalidos/i);
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
   });
  
@@ -217,7 +216,7 @@ describe('Detalle apuestas - Validación y verificación', () => {
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
   });
  
-  test('No se puede dejar apuesta SIMPLE sin detalles válidos', async () => {
+  test('No se puede dejar apuesta SIMPLE sin detalles validos', async () => {
     jwt.verify.mockReturnValue({
       id_usuario: 5,
       perfil: 'APOSTADOR'
@@ -248,7 +247,7 @@ describe('Detalle apuestas - Validación y verificación', () => {
       .set('Authorization', 'Bearer token-pruebas');
  
     expect(response.statusCode).toBe(400);
-    expect(response.body.error).toMatch(/conservar una selección simple/i);
+    expect(response.body.error).toMatch(/conservar una seleccion simple/i);
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
   });
  
@@ -341,3 +340,5 @@ describe('Detalle apuestas - Validación y verificación', () => {
 
 
 //npx jest tests/detalle_apuestas.validacion.test.js --runInBand
+//npx jest --coverage
+//--verbose
